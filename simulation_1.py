@@ -3,8 +3,8 @@ Created on Oct 12, 2016
 
 @author: mwitt_000
 '''
-import network
-import link
+import  network_1 as network
+import link_1 as link
 import threading
 from time import sleep
 
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     
     #add all the links
     link_layer.add_link(link.Link(client, 0, router_a, 0, 50))
-    link_layer.add_link(link.Link(router_a, 0, server, 0, 30))
+    link_layer.add_link(link.Link(router_a, 0, server, 0, 50))
     
     
     #start all the objects

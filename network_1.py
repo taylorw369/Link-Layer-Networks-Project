@@ -34,45 +34,21 @@ class Interface:
 class NetworkPacket:
     ## packet encoding lengths 
     dst_addr_S_length = 5
-    idnum = 0
     
     ##@param dst_addr: address of the destination host
     # @param data_S: packet payload
-    def __init__(self, dst_addr, data_S, segNum = 0):
+    def __init__(self, dst_addr, data_S):
         self.dst_addr = dst_addr
         self.data_S = data_S
-        self.size = len(data_S) + (self.dst_addr_S_length * 2)
-        self.ID = self.idnum
-        self.idnum = self.idnum + 1
-        self.segNum = segNum
+        self.size = len(data_S) + self.dst_addr_S_length
         
     ## called when printing the object
     def __str__(self):
         return self.to_byte_S()
-
-    def split(self, size):
-        new_packets = []
-        numSegs = len(self.data_S)/size
         
-        while len(self.data_S) > 0:
-            if len(self.data_S) < size:
-                p = NetworkPacket(self.dst_addr, self.data_S)
-                p.segNum = numSegs
-                new_packets.append(p)
-                self.data_S = ''
-            else:
-                temp1 = self.data_S[:size ]
-                p = NetworkPacket(self.dst_addr, temp1)
-                p.segNum = numSegs
-                numSegs = numSegs -1
-                new_packets.append(p)
-                self.data_S = self.data_S[size:] #shorten data_S
-        return new_packets
-    
     ## convert packet to a byte string for transmission over links
     def to_byte_S(self):
         byte_S = str(self.dst_addr).zfill(self.dst_addr_S_length)
-        byte_S += str(self.segNum).zfill(self.dst_addr_S_length)
         byte_S += self.data_S
         return byte_S
     
@@ -81,9 +57,8 @@ class NetworkPacket:
     @classmethod
     def from_byte_S(self, byte_S):
         dst_addr = int(byte_S[0 : NetworkPacket.dst_addr_S_length])
-        segNum = int(byte_S[NetworkPacket.dst_addr_S_length:(NetworkPacket.dst_addr_S_length*2)])
-        data_S = byte_S[(NetworkPacket.dst_addr_S_length*2): ]
-        return self(dst_addr, data_S, segNum)
+        data_S = byte_S[NetworkPacket.dst_addr_S_length : ]
+        return self(dst_addr, data_S)
     
 
     
@@ -106,30 +81,26 @@ class Host:
     # @param dst_addr: destination address for the packet
     # @param data_S: data being transmitted to the network layer
     def udt_send(self, dst_addr, data_S):
-        p = NetworkPacket(dst_addr, data_S)
-        new_packets = p.split(self.out_intf_L[0].mtu - (NetworkPacket.dst_addr_S_length*2))
-        for pac in new_packets:
-            self.out_intf_L[0].put(pac.to_byte_S()) #send packets always enqueued successfully
-            print('%s: sending packet "%s" out interface with mtu=%d' % (self, pac, self.out_intf_L[0].mtu))
+        
+        while len(data_S) > 0:
+            if len(data_S) < (self.out_intf_L[0].mtu - NetworkPacket.dst_addr_S_length):
+                p = NetworkPacket(dst_addr, data_S)
+                self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
+                print('%s: sending packet "%s" out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+                data_S = ''
+            else:
+                temp1 = data_S[:self.out_intf_L[0].mtu - NetworkPacket.dst_addr_S_length ]
+                p = NetworkPacket(dst_addr, temp1)
+                self.out_intf_L[0].put(p.to_byte_S()) #send packets always enqueued successfully
+                print('%s: sending packet "%s" out interface with mtu=%d' % (self, p, self.out_intf_L[0].mtu))
+                data_S = data_S[self.out_intf_L[0].mtu - NetworkPacket.dst_addr_S_length:] #shorten data_S
         
     ## receive packet from the network layer
     def udt_receive(self):
-        #while loop until whole message is received
-        # pkt_S = self.in_intf_L[0].get()
-        # received_pacs = []
-        # if pkt_S is not None:
-        #     pac = NetworkPacket.from_byte_S(pkt_S)
-        #     while pac.segNum > 0:
-        #         if pkt_S is not None:
-        #             pac = NetworkPacket.from_byte_S(pkt_S)
-        #             received_pacs.append(pac.data_S)
-        #             print('%s: received packet "%s"' % (self, pkt_S))
-        #             pkt_S = self.in_intf_L[0].get()
-
-         pkt_S = self.in_intf_L[0].get()
-         if pkt_S is not None:
-             print('%s: received packet "%s"' % (self, pkt_S))
-             
+        pkt_S = self.in_intf_L[0].get()
+        if pkt_S is not None:
+            print('%s: received packet "%s"' % (self, pkt_S))
+       
     ## thread target for the host to keep receiving data
     def run(self):
         print (threading.currentThread().getName() + ': Starting')
@@ -160,7 +131,6 @@ class Router:
     def __str__(self):
         return 'Router_%s' % (self.name)
 
-    
     ## look through the content of incoming interfaces and forward to
     # appropriate outgoing interfaces
     def forward(self):
@@ -175,15 +145,12 @@ class Router:
                     # HERE you will need to implement a lookup into the 
                     # forwarding table to find the appropriate outgoing interface
                     # for now we assume the outgoing interface is also i
-                    #split packets
-                    new_packets = p.split(self.out_intf_L[0].mtu - (NetworkPacket.dst_addr_S_length*2))
-                    for pac in new_packets:
-                        self.out_intf_L[0].put(pac.to_byte_S()) #send packets always enqueued successfully
-                        print('%s: sending packet "%s" out interface with mtu=%d' % (self, pac, self.out_intf_L[0].mtu))
+                    self.out_intf_L[i].put(p.to_byte_S(), True)
+                    print('%s: forwarding packet "%s" from interface %d to %d with mtu %d' \
+                        % (self, p, i, i, self.out_intf_L[i].mtu))
             except queue.Full:
                 print('%s: packet "%s" lost on interface %d' % (self, p, i))
                 pass
-            
                 
     ## thread target for the host to keep forwarding data
     def run(self):
