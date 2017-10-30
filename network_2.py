@@ -5,6 +5,7 @@ Created on Oct 12, 2016
 '''
 import queue
 import math
+import time
 import threading
 
 
@@ -131,17 +132,20 @@ class Host:
     ## receive packet from the network layer
     def udt_receive(self):
         #while loop until whole message is received
-        pkt_S = self.in_intf_L[0].get()
+        currentTime = time.clock()
+        #timeout stops infinite loop when no more packets are to be received.
+        timeout = 8
+        first = True
+        pac = None
         received_pacs = ''
-        if pkt_S is not None:
-            pac = NetworkPacket.from_byte_S(pkt_S)
-            while pac.moreflag == 1:
-                if pkt_S is not None:
-                    pac = NetworkPacket.from_byte_S(pkt_S)
-                    received_pacs = received_pacs + pac.data_S
-                pkt_S = self.in_intf_L[0].get()
-
-            # packets are already joined, print the whole one out
+        while (first or pac.moreflag == 1) and (time.clock()-currentTime < timeout):
+            pkt_S = self.in_intf_L[0].get()
+            if pkt_S is not None:
+                first = False
+                pac = NetworkPacket.from_byte_S(pkt_S)
+                received_pacs = received_pacs + pac.data_S
+        # packets are already joined, print the whole one out
+        if len(received_pacs) > 0:
             print('%s: recieved whole packet "%s"' % (self, received_pacs))
 
             
