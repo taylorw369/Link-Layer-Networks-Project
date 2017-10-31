@@ -3,8 +3,8 @@ Created on Oct 12, 2016
 
 @author: mwitt_000
 '''
-import network
-import link
+import network_3 as network
+import link_3 as link
 import threading
 from time import sleep
 
